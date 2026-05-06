@@ -84,8 +84,11 @@ def build_system_prompt(base_prompt: str, vocabulary: list[dict]) -> str:
 
 
 def apply_replacements(text: str, replacements: list[dict]) -> str:
+    import unicodedata
+    # Normalize both text and patterns to NFC so diacritic variants match
+    text = unicodedata.normalize("NFC", text)
     for rule in replacements:
-        find = rule.get("find", "").strip()
+        find = unicodedata.normalize("NFC", rule.get("find", "").strip())
         replace = rule.get("replace", "").strip()
         if find:
             text = re.sub(re.escape(find), replace, text, flags=re.IGNORECASE)
@@ -144,6 +147,8 @@ async def transcribe(
         **inputs,
         max_new_tokens=500,
         streamer=streamer,
+        repetition_penalty=1.3,
+        no_repeat_ngram_size=4,
     )
 
     thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
@@ -160,18 +165,17 @@ async def transcribe(
             Path(webm_path).unlink(missing_ok=True)
             Path(wav_path).unlink(missing_ok=True)
 
-        # Apply post-processing replacements to the complete transcription
-        final_text = apply_replacements(full_text, replacement_rules)
+        vocab_replacements = [
+            {"find": v["spoken"], "replace": v["corrected"]}
+            for v in vocabulary_rules
+            if v.get("spoken", "").strip() and v.get("corrected", "").strip()
+        ]
+        final_text = apply_replacements(full_text, vocab_replacements + replacement_rules)
         print(f"[DEBUG] raw={full_text!r}")
         print(f"[DEBUG] final={final_text!r}")
 
-        # Stream word by word so the UI still feels responsive
-        words = final_text.split(" ")
-        partial = ""
-        for word in words:
-            partial += ("" if partial == "" else " ") + word
-            yield f"data: {partial}\n\n"
-
+        # JSON-encode so newlines/special chars in the transcription never break SSE parsing
+        yield f"data: {json.dumps({'final': final_text, 'raw': full_text})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")
