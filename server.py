@@ -172,12 +172,11 @@ async def transcribe(
         print(f"[DEBUG] raw={full_text!r}")
         print(f"[DEBUG] final={final_text!r}")
 
-        # Stream word by word so the UI still feels responsive
+        # Stream word by word — send each word as a separate incremental chunk
         words = final_text.split(" ")
-        partial = ""
-        for word in words:
-            partial += ("" if partial == "" else " ") + word
-            yield f"data: {partial}\n\n"
+        for i, word in enumerate(words):
+            spacer = " " if i < len(words) - 1 else ""
+            yield f"data: {word}{spacer}\n\n"
 
         yield "data: [DONE]\n\n"
 

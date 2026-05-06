@@ -109,7 +109,7 @@ async function streamTranscription(audioBlob, endpoint, systemPrompt, replacemen
       if (line.startsWith("data: ")) {
         const data = line.slice(6);
         if (data === "[DONE]") return full;
-        full = data;
+        full += data;
         if (onToken) onToken(full);
       }
     }
