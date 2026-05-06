@@ -770,7 +770,7 @@ export default function Gemma4TranscribeTester() {
           <label style={labelStyle}>
             Find &amp; Replace{" "}
             <span style={{ color: "rgba(148,163,184,.4)", fontWeight: 400, textTransform: "none" }}>
-              (applied after transcription)
+              (regex supported — applied after transcription)
             </span>
           </label>
           {replacements.map((rule, i) => (
