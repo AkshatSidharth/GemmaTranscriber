@@ -84,8 +84,11 @@ def build_system_prompt(base_prompt: str, vocabulary: list[dict]) -> str:
 
 
 def apply_replacements(text: str, replacements: list[dict]) -> str:
+    import unicodedata
+    # Normalize both text and patterns to NFC so diacritic variants match
+    text = unicodedata.normalize("NFC", text)
     for rule in replacements:
-        find = rule.get("find", "").strip()
+        find = unicodedata.normalize("NFC", rule.get("find", "").strip())
         replace = rule.get("replace", "").strip()
         if find:
             text = re.sub(re.escape(find), replace, text, flags=re.IGNORECASE)
@@ -172,7 +175,7 @@ async def transcribe(
         print(f"[DEBUG] final={final_text!r}")
 
         # JSON-encode so newlines/special chars in the transcription never break SSE parsing
-        yield f"data: {json.dumps(final_text)}\n\n"
+        yield f"data: {json.dumps({'final': final_text, 'raw': full_text})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")
