@@ -96,7 +96,8 @@ async function streamTranscription(audioBlob, endpoint, systemPrompt, replacemen
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let full = "";
+  let preview = "";
+  let finalResult = null;
   let buffer = "";
 
   while (true) {
@@ -108,13 +109,19 @@ async function streamTranscription(audioBlob, endpoint, systemPrompt, replacemen
     for (const line of lines) {
       if (line.startsWith("data: ")) {
         const data = line.slice(6);
-        if (data === "[DONE]") return full;
-        full += data;
-        if (onToken) onToken(full);
+        if (data === "[DONE]") return finalResult ?? preview;
+        if (data.startsWith("[FINAL]")) {
+          finalResult = data.slice(7);
+          if (onToken) onToken(finalResult);
+        } else {
+          // Cumulative preview from model generation — replace, don't append
+          preview = data;
+          if (onToken) onToken(preview);
+        }
       }
     }
   }
-  return full;
+  return finalResult ?? preview;
 }
 
 function formatDuration(secs) {

@@ -157,6 +157,8 @@ async def transcribe(
             for token in streamer:
                 if token:
                     full_text += token
+                    # Send cumulative text so far — client replaces its preview each event
+                    yield f"data: {full_text}\n\n"
         finally:
             thread.join()
             Path(webm_path).unlink(missing_ok=True)
@@ -172,12 +174,8 @@ async def transcribe(
         print(f"[DEBUG] raw={full_text!r}")
         print(f"[DEBUG] final={final_text!r}")
 
-        # Stream word by word — send each word as a separate incremental chunk
-        words = final_text.split(" ")
-        for i, word in enumerate(words):
-            spacer = " " if i < len(words) - 1 else ""
-            yield f"data: {word}{spacer}\n\n"
-
+        # Send post-processed final result as a tagged event, then done
+        yield f"data: [FINAL]{final_text}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")
