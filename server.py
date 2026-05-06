@@ -66,6 +66,23 @@ def index():
     return HTML_TEMPLATE.replace("__JSX_CODE__", jsx_code)
 
 
+def build_system_prompt(base_prompt: str, vocabulary: list[dict]) -> str:
+    """Inject vocabulary corrections into the system prompt."""
+    if not vocabulary:
+        return base_prompt
+    vocab_lines = "\n".join(
+        f'- If you hear "{v["spoken"]}", always write "{v["corrected"]}"'
+        for v in vocabulary
+        if v.get("spoken", "").strip() and v.get("corrected", "").strip()
+    )
+    if not vocab_lines:
+        return base_prompt
+    return (
+        f"{base_prompt}\n\n"
+        f"Important vocabulary corrections — apply these exactly:\n{vocab_lines}"
+    )
+
+
 def apply_replacements(text: str, replacements: list[dict]) -> str:
     for rule in replacements:
         find = rule.get("find", "").strip()
@@ -79,9 +96,14 @@ def apply_replacements(text: str, replacements: list[dict]) -> str:
 async def transcribe(
     audio: UploadFile = File(...),
     system_prompt: str = Form("Transcribe the audio."),
-    replacements: str = Form("[]"),  # JSON array of {find, replace} objects
+    replacements: str = Form("[]"),   # JSON [{find, replace}] — post-processing
+    vocabulary: str = Form("[]"),     # JSON [{spoken, corrected}] — injected into prompt
 ):
     replacement_rules = json.loads(replacements)
+    vocabulary_rules = json.loads(vocabulary)
+
+    # Build the final prompt with vocabulary hints baked in
+    final_prompt = build_system_prompt(system_prompt, vocabulary_rules)
 
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
         tmp.write(await audio.read())
@@ -101,7 +123,7 @@ async def transcribe(
             "role": "user",
             "content": [
                 {"type": "audio", "audio": audio_array},
-                {"type": "text", "text": system_prompt},
+                {"type": "text", "text": final_prompt},
             ],
         }
     ]
@@ -115,7 +137,7 @@ async def transcribe(
         processor.tokenizer, skip_prompt=True, skip_special_tokens=True
     )
 
-    print(f"[DEBUG] system_prompt={system_prompt!r}")
+    print(f"[DEBUG] final_prompt={final_prompt!r}")
     print(f"[DEBUG] replacements={replacement_rules}")
 
     generation_kwargs = dict(
@@ -138,7 +160,7 @@ async def transcribe(
             Path(webm_path).unlink(missing_ok=True)
             Path(wav_path).unlink(missing_ok=True)
 
-        # Apply replacements to the complete transcription
+        # Apply post-processing replacements to the complete transcription
         final_text = apply_replacements(full_text, replacement_rules)
         print(f"[DEBUG] raw={full_text!r}")
         print(f"[DEBUG] final={final_text!r}")

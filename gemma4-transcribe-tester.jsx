@@ -64,11 +64,12 @@ function computeWER(reference, hypothesis) {
   return m === 0 ? 0 : dp[m][n] / m;
 }
 
-async function streamTranscription(audioBlob, endpoint, systemPrompt, replacements, onToken, signal) {
+async function streamTranscription(audioBlob, endpoint, systemPrompt, replacements, vocabulary, onToken, signal) {
   const formData = new FormData();
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("system_prompt", systemPrompt);
   formData.append("replacements", JSON.stringify(replacements));
+  formData.append("vocabulary", JSON.stringify(vocabulary));
 
   if (!endpoint || !endpoint.trim()) {
     // Demo mode
@@ -413,6 +414,7 @@ export default function Gemma4TranscribeTester() {
   const [referenceText, setReferenceText] = useState("");
   const [showConfig, setShowConfig] = useState(true);
   const [replacements, setReplacements] = useState([{ find: "", replace: "" }]);
+  const [vocabulary, setVocabulary] = useState([{ spoken: "", corrected: "" }]);
 
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -516,11 +518,13 @@ export default function Gemma4TranscribeTester() {
 
       try {
         const activeReplacements = replacements.filter((r) => r.find.trim());
+        const activeVocabulary = vocabulary.filter((v) => v.spoken.trim() && v.corrected.trim());
         const text = await streamTranscription(
           audioBlob,
           endpoint,
           systemPrompt,
           activeReplacements,
+          activeVocabulary,
           (partial) => setStreamingText(partial),
           controller.signal
         );
@@ -698,6 +702,53 @@ export default function Gemma4TranscribeTester() {
               lineHeight: 1.55,
             }}
           />
+        </div>
+
+        {/* vocabulary corrections — injected into prompt */}
+        <div>
+          <label style={labelStyle}>
+            Vocabulary Corrections{" "}
+            <span style={{ color: "rgba(74,222,128,.5)", fontWeight: 400, textTransform: "none" }}>
+              (injected into prompt — most reliable)
+            </span>
+          </label>
+          {vocabulary.map((rule, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
+              <input
+                type="text"
+                value={rule.spoken}
+                onChange={(e) => {
+                  const next = [...vocabulary];
+                  next[i] = { ...next[i], spoken: e.target.value };
+                  setVocabulary(next);
+                }}
+                placeholder="Spoken (e.g. mole mature)"
+                style={{ ...inputStyle, flex: 1, fontSize: 11 }}
+              />
+              <span style={{ color: "rgba(74,222,128,.4)", fontFamily: "JetBrains Mono,monospace", fontSize: 12 }}>→</span>
+              <input
+                type="text"
+                value={rule.corrected}
+                onChange={(e) => {
+                  const next = [...vocabulary];
+                  next[i] = { ...next[i], corrected: e.target.value };
+                  setVocabulary(next);
+                }}
+                placeholder="Write as (e.g. chole bhature)"
+                style={{ ...inputStyle, flex: 1, fontSize: 11 }}
+              />
+              <button
+                onClick={() => setVocabulary(vocabulary.filter((_, j) => j !== i))}
+                style={{ background: "none", border: "none", color: "rgba(248,113,113,.5)", cursor: "pointer", fontSize: 16, padding: "0 2px", lineHeight: 1 }}
+              >×</button>
+            </div>
+          ))}
+          <button
+            onClick={() => setVocabulary([...vocabulary, { spoken: "", corrected: "" }])}
+            style={{ background: "rgba(74,222,128,.03)", border: "1px dashed rgba(74,222,128,.15)", borderRadius: 6, color: "rgba(74,222,128,.4)", padding: "5px 12px", fontSize: 11, cursor: "pointer", fontFamily: "JetBrains Mono,monospace", width: "100%", marginTop: 2 }}
+          >
+            + Add vocabulary rule
+          </button>
         </div>
 
         {/* post-processing replacements */}
