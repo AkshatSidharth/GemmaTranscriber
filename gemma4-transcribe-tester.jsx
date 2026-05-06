@@ -96,7 +96,7 @@ async function streamTranscription(audioBlob, endpoint, systemPrompt, replacemen
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let full = "";
+  let result = "";
   let buffer = "";
 
   while (true) {
@@ -106,15 +106,15 @@ async function streamTranscription(audioBlob, endpoint, systemPrompt, replacemen
     const lines = buffer.split("\n");
     buffer = lines.pop();
     for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        const data = line.slice(6);
-        if (data === "[DONE]") return full;
-        full += data;
-        if (onToken) onToken(full);
-      }
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6);
+      if (data === "[DONE]") return result;
+      // Server sends a single JSON-encoded {final, raw} event before [DONE]
+      result = JSON.parse(data);
+      if (onToken) onToken(result.final);
     }
   }
-  return full;
+  return result;
 }
 
 function formatDuration(secs) {
@@ -294,6 +294,17 @@ function RunCard({ run, index, total, referenceText, onPin, isPinned }) {
       >
         {run.transcription}
       </p>
+
+      {run.raw && run.raw !== run.transcription && (
+        <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(0,0,0,.2)", borderRadius: 6, borderLeft: "2px solid rgba(148,163,184,.15)" }}>
+          <div style={{ fontFamily: "JetBrains Mono,monospace", fontSize: 9, color: "rgba(148,163,184,.35)", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>
+            raw model output
+          </div>
+          <p style={{ margin: 0, fontFamily: "JetBrains Mono,monospace", fontSize: 11, color: "rgba(148,163,184,.4)", wordBreak: "break-word", lineHeight: 1.6 }}>
+            {run.raw}
+          </p>
+        </div>
+      )}
 
       <div
         style={{
@@ -529,11 +540,14 @@ export default function Gemma4TranscribeTester() {
           controller.signal
         );
         if (text) {
+          const transcription = typeof text === "object" ? text.final : text;
+          const raw = typeof text === "object" ? text.raw : null;
           setRuns((prev) => [
             {
               id: Date.now(),
               systemPrompt,
-              transcription: text,
+              transcription,
+              raw,
               audioDuration,
               timestamp: Date.now(),
             },
