@@ -64,10 +64,11 @@ function computeWER(reference, hypothesis) {
   return m === 0 ? 0 : dp[m][n] / m;
 }
 
-async function streamTranscription(audioBlob, endpoint, systemPrompt, onToken, signal) {
+async function streamTranscription(audioBlob, endpoint, systemPrompt, replacements, onToken, signal) {
   const formData = new FormData();
   formData.append("audio", audioBlob, "recording.webm");
   formData.append("system_prompt", systemPrompt);
+  formData.append("replacements", JSON.stringify(replacements));
 
   if (!endpoint || !endpoint.trim()) {
     // Demo mode
@@ -411,6 +412,7 @@ export default function Gemma4TranscribeTester() {
   const [systemPrompt, setSystemPrompt] = useState(PRESET_PROMPTS[0].prompt);
   const [referenceText, setReferenceText] = useState("");
   const [showConfig, setShowConfig] = useState(true);
+  const [replacements, setReplacements] = useState([{ find: "", replace: "" }]);
 
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -513,10 +515,12 @@ export default function Gemma4TranscribeTester() {
       }
 
       try {
+        const activeReplacements = replacements.filter((r) => r.find.trim());
         const text = await streamTranscription(
           audioBlob,
           endpoint,
           systemPrompt,
+          activeReplacements,
           (partial) => setStreamingText(partial),
           controller.signal
         );
@@ -694,6 +698,53 @@ export default function Gemma4TranscribeTester() {
               lineHeight: 1.55,
             }}
           />
+        </div>
+
+        {/* post-processing replacements */}
+        <div>
+          <label style={labelStyle}>
+            Find &amp; Replace{" "}
+            <span style={{ color: "rgba(148,163,184,.4)", fontWeight: 400, textTransform: "none" }}>
+              (applied after transcription)
+            </span>
+          </label>
+          {replacements.map((rule, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
+              <input
+                type="text"
+                value={rule.find}
+                onChange={(e) => {
+                  const next = [...replacements];
+                  next[i] = { ...next[i], find: e.target.value };
+                  setReplacements(next);
+                }}
+                placeholder="Find…"
+                style={{ ...inputStyle, flex: 1, fontSize: 11 }}
+              />
+              <span style={{ color: "rgba(148,163,184,.3)", fontFamily: "JetBrains Mono,monospace", fontSize: 12 }}>→</span>
+              <input
+                type="text"
+                value={rule.replace}
+                onChange={(e) => {
+                  const next = [...replacements];
+                  next[i] = { ...next[i], replace: e.target.value };
+                  setReplacements(next);
+                }}
+                placeholder="Replace…"
+                style={{ ...inputStyle, flex: 1, fontSize: 11 }}
+              />
+              <button
+                onClick={() => setReplacements(replacements.filter((_, j) => j !== i))}
+                style={{ background: "none", border: "none", color: "rgba(248,113,113,.5)", cursor: "pointer", fontSize: 16, padding: "0 2px", lineHeight: 1 }}
+              >×</button>
+            </div>
+          ))}
+          <button
+            onClick={() => setReplacements([...replacements, { find: "", replace: "" }])}
+            style={{ background: "rgba(255,255,255,.03)", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 6, color: "rgba(148,163,184,.4)", padding: "5px 12px", fontSize: 11, cursor: "pointer", fontFamily: "JetBrains Mono,monospace", width: "100%", marginTop: 2 }}
+          >
+            + Add rule
+          </button>
         </div>
 
         {/* reference text (for WER) */}

@@ -1,3 +1,5 @@
+import json
+import re
 import subprocess
 import tempfile
 import threading
@@ -64,11 +66,23 @@ def index():
     return HTML_TEMPLATE.replace("__JSX_CODE__", jsx_code)
 
 
+def apply_replacements(text: str, replacements: list[dict]) -> str:
+    for rule in replacements:
+        find = rule.get("find", "").strip()
+        replace = rule.get("replace", "").strip()
+        if find:
+            text = re.sub(re.escape(find), replace, text, flags=re.IGNORECASE)
+    return text
+
+
 @app.post("/transcribe")
 async def transcribe(
     audio: UploadFile = File(...),
     system_prompt: str = Form("Transcribe the audio."),
+    replacements: str = Form("[]"),  # JSON array of {find, replace} objects
 ):
+    replacement_rules = json.loads(replacements)
+
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
         tmp.write(await audio.read())
         webm_path = tmp.name
@@ -102,10 +116,7 @@ async def transcribe(
     )
 
     print(f"[DEBUG] system_prompt={system_prompt!r}")
-    print(f"[DEBUG] Input keys: {list(inputs.keys())}")
-    for k, v in inputs.items():
-        if hasattr(v, "shape"):
-            print(f"[DEBUG] {k}: shape={v.shape}, dtype={v.dtype}")
+    print(f"[DEBUG] replacements={replacement_rules}")
 
     generation_kwargs = dict(
         **inputs,
@@ -117,15 +128,28 @@ async def transcribe(
     thread.start()
 
     def token_stream():
+        full_text = ""
         try:
             for token in streamer:
                 if token:
-                    print(f"[DEBUG] Streamed token: '{token}'")
-                    yield f"data: {token}\n\n"
+                    full_text += token
         finally:
             thread.join()
             Path(webm_path).unlink(missing_ok=True)
             Path(wav_path).unlink(missing_ok=True)
+
+        # Apply replacements to the complete transcription
+        final_text = apply_replacements(full_text, replacement_rules)
+        print(f"[DEBUG] raw={full_text!r}")
+        print(f"[DEBUG] final={final_text!r}")
+
+        # Stream word by word so the UI still feels responsive
+        words = final_text.split(" ")
+        partial = ""
+        for word in words:
+            partial += ("" if partial == "" else " ") + word
+            yield f"data: {partial}\n\n"
+
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")
