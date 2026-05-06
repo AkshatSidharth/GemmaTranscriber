@@ -1,0 +1,19 @@
+[project]
+name = "gemma4-transcribe-tester"
+version = "0.1.0"
+description = "Gemma 4 system-prompt transcription testing tool"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "python-multipart>=0.0.18",
+    "transformers>=4.52",
+    "torch>=2.6",
+    "accelerate>=1.6",
+    "pillow>=11.0",
+    "torchvision>=0.21",
+    "librosa>=0.10",
+]
+
+[project.scripts]
+serve = "server:main"
