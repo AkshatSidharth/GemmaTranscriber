@@ -144,6 +144,8 @@ async def transcribe(
         **inputs,
         max_new_tokens=500,
         streamer=streamer,
+        repetition_penalty=1.3,
+        no_repeat_ngram_size=4,
     )
 
     thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
@@ -160,8 +162,13 @@ async def transcribe(
             Path(webm_path).unlink(missing_ok=True)
             Path(wav_path).unlink(missing_ok=True)
 
-        # Apply post-processing replacements to the complete transcription
-        final_text = apply_replacements(full_text, replacement_rules)
+        # Apply vocabulary corrections as post-processing too (prompt injection alone is unreliable on small models)
+        vocab_replacements = [
+            {"find": v["spoken"], "replace": v["corrected"]}
+            for v in vocabulary_rules
+            if v.get("spoken", "").strip() and v.get("corrected", "").strip()
+        ]
+        final_text = apply_replacements(full_text, vocab_replacements + replacement_rules)
         print(f"[DEBUG] raw={full_text!r}")
         print(f"[DEBUG] final={final_text!r}")
 
