@@ -90,7 +90,14 @@ def apply_replacements(text: str, replacements: list[dict]) -> str:
     for rule in replacements:
         find = unicodedata.normalize("NFC", rule.get("find", "").strip())
         replace = rule.get("replace", "").strip()
-        if find:
+        if not find:
+            continue
+        # Vocabulary rules carry literal=True; user Find & Replace rules are treated as regex
+        pattern = re.escape(find) if rule.get("literal") else find
+        try:
+            text = re.sub(pattern, replace, text, flags=re.IGNORECASE)
+        except re.error:
+            # Fall back to literal match if the user's pattern is invalid regex
             text = re.sub(re.escape(find), replace, text, flags=re.IGNORECASE)
     return text
 
@@ -166,7 +173,7 @@ async def transcribe(
             Path(wav_path).unlink(missing_ok=True)
 
         vocab_replacements = [
-            {"find": v["spoken"], "replace": v["corrected"]}
+            {"find": v["spoken"], "replace": v["corrected"], "literal": True}
             for v in vocabulary_rules
             if v.get("spoken", "").strip() and v.get("corrected", "").strip()
         ]
