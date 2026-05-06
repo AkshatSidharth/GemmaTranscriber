@@ -157,14 +157,11 @@ async def transcribe(
             for token in streamer:
                 if token:
                     full_text += token
-                    # Send cumulative text so far — client replaces its preview each event
-                    yield f"data: {full_text}\n\n"
         finally:
             thread.join()
             Path(webm_path).unlink(missing_ok=True)
             Path(wav_path).unlink(missing_ok=True)
 
-        # Apply vocabulary corrections as post-processing too (prompt injection alone is unreliable on small models)
         vocab_replacements = [
             {"find": v["spoken"], "replace": v["corrected"]}
             for v in vocabulary_rules
@@ -174,8 +171,8 @@ async def transcribe(
         print(f"[DEBUG] raw={full_text!r}")
         print(f"[DEBUG] final={final_text!r}")
 
-        # Send post-processed final result as a tagged event, then done
-        yield f"data: [FINAL]{final_text}\n\n"
+        # JSON-encode so newlines/special chars in the transcription never break SSE parsing
+        yield f"data: {json.dumps(final_text)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(token_stream(), media_type="text/event-stream")

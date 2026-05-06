@@ -96,8 +96,7 @@ async function streamTranscription(audioBlob, endpoint, systemPrompt, replacemen
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let preview = "";
-  let finalResult = null;
+  let result = "";
   let buffer = "";
 
   while (true) {
@@ -107,21 +106,15 @@ async function streamTranscription(audioBlob, endpoint, systemPrompt, replacemen
     const lines = buffer.split("\n");
     buffer = lines.pop();
     for (const line of lines) {
-      if (line.startsWith("data: ")) {
-        const data = line.slice(6);
-        if (data === "[DONE]") return finalResult ?? preview;
-        if (data.startsWith("[FINAL]")) {
-          finalResult = data.slice(7);
-          if (onToken) onToken(finalResult);
-        } else {
-          // Cumulative preview from model generation — replace, don't append
-          preview = data;
-          if (onToken) onToken(preview);
-        }
-      }
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6);
+      if (data === "[DONE]") return result;
+      // Server sends a single JSON-encoded result event before [DONE]
+      result = JSON.parse(data);
+      if (onToken) onToken(result);
     }
   }
-  return finalResult ?? preview;
+  return result;
 }
 
 function formatDuration(secs) {
